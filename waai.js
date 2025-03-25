@@ -6,11 +6,16 @@ const pdfParse = require("pdf-parse");
 const xlsx = require("xlsx");
 const mammoth = require("mammoth");
 
+const AI_ON = 'ai on';
+const AI_OFF = 'ai off';
+const AI_STATUS = 'status ai';
+
 require("dotenv").config();
 
 const {
     GoogleGenerativeAI,
 } = require("@google/generative-ai");
+const { matchesGlob } = require("path");
 
 const chatSessions = {}; // Menyimpan sesi percakapan untuk setiap pengguna
 
@@ -163,6 +168,7 @@ async function startBot() {
     sock.ev.on("messages.upsert", async (m) => {
         if (!m.messages[0]?.message) return;
 
+        let msg_doc = false;
         const msg = m.messages[0];
         if (msg.key.fromMe) return;
 
@@ -194,6 +200,7 @@ async function startBot() {
         }
 
         if (msg.message.imageMessage || msg.message.documentMessage) {
+            msg_doc = true;
             const buffer = await downloadMediaMessage(msg, "buffer");
             if (msg.message.imageMessage) {
                 text = await processImage(buffer);
@@ -206,9 +213,8 @@ async function startBot() {
             } else if (msg.message.documentMessage.mimetype === "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
                 text = await processPPTX(buffer);
             }
+            if (!text) return;
         }
-
-        if (!text) return;
 
         const sText = splitText(text);
         if (sText[0].toLowerCase()==='jk:') return;
@@ -224,14 +230,30 @@ async function startBot() {
                 });
             }
 
-            await sock.sendPresenceUpdate("composing", senderJid);
             const chatSession = chatSessions[senderNumber];
+            
+            if (text1.toLowerCase()===AI_OFF||text1.toLowerCase()===AI_ON) {chatSession.ai=text1.toLowerCase();} 
+            if (text1.toLowerCase()===AI_STATUS){
+                let status_ai = 'ON';
+                if (chatSession.ai===AI_OFF) status_ai = 'OFF';
+
+                await sock.sendMessage(senderJid, { text: `_Status AI saat ini *${status_ai}*_` });
+                return; 
+            }
+
+            if (chatSession.ai===AI_OFF||text1.toLowerCase()===AI_OFF ||text1.toLowerCase()===AI_ON) return;
+
+            if (!msg_doc) await sock.sendPresenceUpdate("composing", senderJid);
+
+            //console.log(chatSession);
+
             const result = await chatSession.sendMessage(text1);
 
             const textai = transformText(result.response?.candidates?.[0]?.content.parts[0]?.text) || "No response received.";
             const textdisc = '_*Disclaimer:*_\nInformasi ini berasal dari _Artificial Intelligence (AI) Large Language Model (LLM)_ yang dilatih *Google*';
 
-            console.log(textai);
+            //console.log(textai);
+            if (msg.message.imageMessage || msg.message.documentMessage) return;
 
             await sock.sendMessage(senderJid, { text: textai });
             await sock.sendMessage(senderJid, { text: textdisc });
