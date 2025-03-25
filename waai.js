@@ -6,8 +6,8 @@ const pdfParse = require("pdf-parse");
 const xlsx = require("xlsx");
 const mammoth = require("mammoth");
 
-const AI_ON = 'ai on';
-const AI_OFF = 'ai off';
+const AI_ON = 'set ai on';
+const AI_OFF = 'set ai off';
 const AI_STATUS = 'status ai';
 
 require("dotenv").config();
@@ -101,26 +101,6 @@ async function processPPTX(pptxBuffer) {
         return "Gagal membaca isi file PPTX.";
     }
 }
-
-/*
-async function processPPTX(pptxBuffer) {
-    try {
-        // Simpan buffer ke file sementara
-        const tempFilePath = "./temp_pptx.pptx";
-        fs.writeFileSync(tempFilePath, pptxBuffer);
-
-        // Gunakan pptx2txt untuk mengekstrak teks
-        const text = await pptx2txt.extractText(tempFilePath);
-
-        // Hapus file sementara
-        fs.unlinkSync(tempFilePath);
-
-        return text.trim() || "Tidak ada teks yang bisa dibaca.";
-    } catch (error) {
-        console.error("PPTX Parsing Error:", error);
-        return "Gagal membaca isi file PPTX.";
-    }
-} */
 
 const genAI = new GoogleGenerativeAI(apiKey);
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -217,7 +197,12 @@ async function startBot() {
         }
 
         const sText = splitText(text);
-        if (sText[0].toLowerCase()==='jk:') return;
+        if (sText[0].toLowerCase()==='jk:') {
+            await sock.sendMessage(senderJid, { text: `Gunakan Perintah:\n*_Set ai off_*` });
+            await sock.sendMessage(senderJid, { text: sText[1] });
+            await sock.sendMessage(senderJid, { text: `Untuk melihat status WA didukung AI atau tidak gunakan perintah:\n*_Status ai_*\n\nContoh hasilnya: _Status AI saat ini *OFF*_\n\nAgar WA didukung AI gunakan perintah:\n*_Set ai on_*` });
+            return;
+        }
         const text1=sText[0];
 
         if (!allowedUsers.includes(senderNumber)) return;
