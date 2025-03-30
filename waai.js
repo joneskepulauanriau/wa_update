@@ -6,19 +6,22 @@ const pdfParse = require("pdf-parse");
 const xlsx = require("xlsx");
 const mammoth = require("mammoth");
 
+const path = 'wa_parameters.json';
+const IDAPPSTART = 'AppWA';
 const AI_ON = 'set ai on';
 const AI_OFF = 'set ai off';
 const AI_STATUS = 'status ai';
+const SETAPP_ON = 'set appwa on';
+const SETAPP_OFF ='set appwa off';
+const STATUSAPP = 'status appwa';
+const SETON = 'ON';
+const SETOFF = 'OFF';
 
 require("dotenv").config();
 
-const {
-    GoogleGenerativeAI,
-} = require("@google/generative-ai");
+const {GoogleGenerativeAI, } = require("@google/generative-ai");
 const { matchesGlob } = require("path");
-
 const chatSessions = {}; // Menyimpan sesi percakapan untuk setiap pengguna
-
 const USERS_FILE = "allowed_users.json";
 
 function splitText(text) {
@@ -66,6 +69,7 @@ async function processPDF(pdfBuffer) {
         return "Gagal membaca teks dari PDF.";
     }
 }
+
 async function processXLSX(xlsxBuffer) {
     try {
         const workbook = xlsx.read(xlsxBuffer, { type: "buffer" });
@@ -90,7 +94,6 @@ async function processDOCX(docxBuffer) {
         return "Gagal membaca isi file DOCX.";
     }
 }
-
 
 async function processPPTX(pptxBuffer) {
     try {
@@ -125,6 +128,45 @@ function transformText(inputText) {
         .trim(); // Menghapus spasi di awal dan akhir
 }
 
+// Fungsi untuk membaca data dari file JSON
+function readData() {
+    if (!fs.existsSync(path)) {
+        fs.writeFileSync(path, JSON.stringify([], null, 2));
+    }
+    const data = fs.readFileSync(path);
+    return JSON.parse(data);
+}
+
+// Fungsi untuk menulis data ke file JSON
+function writeData(data) {
+    fs.writeFileSync(path, JSON.stringify(data, null, 2));
+}
+
+// Fungsi untuk membaca keywords berdasarkan ID
+function getKeywordsById(id) {
+    //const id = parseInt(strId, 10);
+    let data = readData();
+    let item = data.find(item => item.id === id);
+    return item ? item.keywords : null;
+}
+
+// Fungsi untuk memperbarui keyword tertentu pada ID tertentu
+function updateKeywords(id, oldKeyword, newKeyword) {
+    let data = readData();
+    let index = data.findIndex(item => item.id === id);
+    if (index !== -1) {
+        let keywordIndex = data[index].keywords.indexOf(oldKeyword);
+        if (keywordIndex !== -1) {
+            data[index].keywords[keywordIndex] = newKeyword;
+            writeData(data);
+        } else {
+            console.log('Keyword tidak ditemukan');
+        }
+    } else {
+        console.log('Data tidak ditemukan');
+    }
+}
+
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("./auth_multi_device");
     const sock = makeWASocket({
@@ -156,7 +198,13 @@ async function startBot() {
         const senderNumber = senderJid.replace(/[@].*/, "");
         const senderName = msg.pushName || "Tanpa Nama";
         let text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+ 
+        if (senderJid.includes('@g.us')) return;
+
         console.log(`📩 Pesan dari ${senderName} (${senderNumber}): ${text}`);
+
+        const statapp = getKeywordsById(IDAPPSTART);
+        //console.log(`Keyword ==> ${statapp[0]} User: ${authorizingUser}`);
 
         if (senderNumber === authorizingUser) {
             if (text.startsWith("!adduser ")) {
@@ -165,8 +213,8 @@ async function startBot() {
                     allowedUsers.push(newUser);
                     saveAllowedUsers(allowedUsers);
                     await sock.sendMessage(senderJid, { text: `✅ Pengguna ${newUser} telah ditambahkan.` });
-                    return;
                 }
+                return;
             } else if (text.startsWith("!deluser ")) {
                 const removeUser = text.split(" ")[1];
                 allowedUsers = allowedUsers.filter((user) => user !== removeUser);
@@ -176,8 +224,21 @@ async function startBot() {
             } else if (text === "!listusers") {
                 await sock.sendMessage(senderJid, { text: `📋 Pengguna diizinkan:\n ${allowedUsers.join(", ")}` });
                 return;
+            } else if (text.toLocaleLowerCase()===SETAPP_OFF) {
+                updateKeywords(IDAPPSTART, SETON, SETOFF);
+                await sock.sendMessage(senderJid, { text: `Status Aplikasi WA-AI *${SETOFF}*` });  
+                return;
+            } else if (text.toLocaleLowerCase()===SETAPP_ON) {
+                updateKeywords(IDAPPSTART, SETOFF, SETON);
+                await sock.sendMessage(senderJid, { text: `Status Aplikasi WA-AI *${SETON}*` });  
+                return;
+            } else if (text.toLocaleLowerCase()===STATUSAPP) {
+                await sock.sendMessage(senderJid, { text: `Status Aplikasi WA-AI *${statapp[0]}*` });  
+                return;
             }
         }
+
+        if (statapp[0]===SETOFF) return;
 
         if (msg.message.imageMessage || msg.message.documentMessage) {
             msg_doc = true;
@@ -230,14 +291,11 @@ async function startBot() {
 
             if (!msg_doc) await sock.sendPresenceUpdate("composing", senderJid);
 
-            //console.log(chatSession);
-
             const result = await chatSession.sendMessage(text1);
 
             const textai = transformText(result.response?.candidates?.[0]?.content.parts[0]?.text) || "No response received.";
             const textdisc = '_*Disclaimer:*_\nInformasi ini berasal dari _Artificial Intelligence (AI) Large Language Model (LLM)_ yang dilatih *Google*';
 
-            //console.log(textai);
             if (msg.message.imageMessage || msg.message.documentMessage) return;
 
             await sock.sendMessage(senderJid, { text: textai });
