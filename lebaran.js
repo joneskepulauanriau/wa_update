@@ -201,12 +201,15 @@ async function startBot() {
         let msg_doc = false;
         const msg = m.messages[0];
 
-        if (msg.key.fromMe) return;
-
         const senderJid = msg.key.remoteJid;
         const senderNumber = senderJid.replace(/[@].*/, "");
         const senderName = msg.pushName || "Tanpa Nama";
         let text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+
+        if (msg.key.fromMe) {
+            userSessions[senderNumber] = {status_kirim: STAT_KIRIM};
+            return;
+        }
 
         if (senderJid.includes('@g.us')) return;
 
