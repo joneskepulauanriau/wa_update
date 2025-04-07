@@ -1,14 +1,14 @@
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 // Daftarkan font Arial biasa
-registerFont('../fonts/Arial.ttf', { family: 'Arial' });
+registerFont('./src/fonts/arial.ttf', { family: 'Arial' });
 
 // Daftarkan font italic jika ada
-registerFont('./src/fonts/Ariali.ttf', { family: 'Arial', style: 'italic' });
+registerFont('./src/fonts/ariali.ttf', { family: 'Arial', style: 'italic' });
 
 
 
@@ -227,6 +227,42 @@ async function generateImage(recParam, senderNumber) {
   console.log('✅ Gambar ranking berhasil dibuat:', outputPath);
 }
 
+function parsePerintah(text) {
+  // Normalisasi: hapus spasi berlebih
+  text = text.replace(/\s+/g, ' ')
+          .replace(/;/g, ',')
+          .replace(/tampilkan/gi, 'buat')
+          .replace(/h2h/gi, 'head to head')
+          .replace(/pertemuan langsung/gi, 'head to head')
+          .replace(/rangking/gi, 'ranking')
+          .replace(/peringkat/gi, 'ranking')
+          .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
+          .trim();
+
+  // Daftar kata penghubung yang mungkin digunakan
+  const connectors = ['untuk', 'antara', 'dengan', 'sampai', 'dari', 'ke', 'pada', 'hingga'];
+
+  // Cari posisi kata penghubung pertama
+  let splitIndex = -1;
+  for (let word of connectors) {
+    let i = text.toLowerCase().indexOf(word);
+    if (i !== -1 && (splitIndex === -1 || i < splitIndex)) {
+      splitIndex = i;
+    }
+  }
+
+  // Ambil bagian perintah
+  const perintah = splitIndex !== -1 ? text.substring(0, splitIndex).trim() : text;
+
+  // Ambil semua angka dengan minimal 6 digit
+  const ids = text.match(/\d{6,}/g) || [];
+
+  //return [perintah, ...ids];
+  return [{'perintah': perintah, 
+    'paramter': ids,
+  }];
+}
+
 module.exports = {
-  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage
+  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, parsePerintah
 };
