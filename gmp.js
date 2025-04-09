@@ -2,9 +2,9 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { Session } = require("inspector/promises");
 const fs = require("fs");
 const { error } = require("console");
-const {getDataRow, insertData, updateData, getPeringkat, findHeadToHead, resetAutoincrement} = require('./src/model/gmp_service');
+const {getDataRow, insertData, updateData, getPeringkat, findHeadToHead, resetAutoincrement, executeSQL, getIDPlayer, getPosisiTerbaik} = require('./src/model/gmp_service');
 //const { request } = require("http");
-const { handleFile, readFileExcel, generateImage, DateToWIB, parsePerintah } = require('./src/model/gmp_function');
+const { handleFile, readFileExcel, generateImage, DateToWIB, parsePerintah, isNumber} = require('./src/model/gmp_function');
 require("dotenv").config();
 
 const path = 'parameters.json';
@@ -20,9 +20,11 @@ const GMP_RANGKING_PEMAIN = `buat ranking pemain`;
 const GMP_HEAD_TO_HEAD = 'buat head to head pemain';
 const GMP_DISP_TURNAMEN = 'buat data turnamen';
 const GMP_DISP_PEMAIN = 'buat data pemain';
+const GMP_POSISI_TERBAIK = `buat posisi terbaik`
 
 const GMP_MULAI_IMPORT_DATA = `mulai import data`;
 const GMP_RESET_PERTANDINGAN = `reset pertandingan`;
+const GMP_EXECUTE_SQL = `execute sql`;
 
 // Definisi Step Pertandingan
 const PERTANDINGAN_ID_TURNAMEN = 1;
@@ -45,6 +47,8 @@ const RANGKING_PEMAIN = 20;
 const H2H_ID_PEMAIN = 21;
 const H2H_ID_LAWAN = 22;
 const H2H_ID_TURNAMEN=23
+
+const INPUT_SQL = 25;
 
 
 // Babak
@@ -183,6 +187,13 @@ async function startBot() {
                 await resetAutoincrement('TRUNCATE TABLE pertandingan;');
                 await sock.sendMessage(senderJid, { text: `Proeses reset pertandingan selesai.` });  
                 return;
+            } else if (text.toLocaleLowerCase()===GMP_EXECUTE_SQL) {
+                sock.sendPresenceUpdate("composing", senderJid);
+                //onst result = await executeSQL('select * from pemain');
+                userSessions[sender] = { step: INPUT_SQL } 
+                await sock.sendMessage(senderJid, { text: `Masukkan Perintah SQL:` });  
+                //await sock.sendMessage(senderJid, { text: `Proeses ${text} selesai.` });  
+                return;
             }
         }
 
@@ -197,7 +208,18 @@ async function startBot() {
             if (userSessions[sender]) {
                 let session = userSessions[sender];
 
-                if (session.step===IMPORTDATA_MULAI) {
+
+                if (session.step===INPUT_SQL) {
+                    //console.log(msg);
+                    const rec = await executeSQL(text);
+                    //let str = '';
+                    //rec.forEach ((dta, index) => {
+                    //    console.log(dta);
+                    //}
+                  
+                    //console.log();
+                    delete userSessions[sender];
+                } else if (session.step===IMPORTDATA_MULAI) {
                     //console.log(msg);
                     const rec = await handleFile(sock, msg);
                     
@@ -269,18 +291,23 @@ async function startBot() {
             }
 
             const [command] = parsePerintah(text);
-            console.log(command);
-            const para1 = command.paramter[0];
-            const para2 = command.paramter[1];
-            const para3 = command.paramter[2];
+            //console.log(command);
+            const para1 = command.parameter[0];
+            const para2 = command.parameter[1];
+            const para3 = command.parameter[2];
             const menu = command.perintah;
-            console.log(para1, para2, para3);
+            //console.log(para1, para2, para3);
             if (menu.toLowerCase()===GMP_RANGKING_PEMAIN){
-                if (command.paramter){
-                    const id_turnamen = command.paramter[0];
+                if (command.parameter){
+                    sock.sendPresenceUpdate("composing", senderJid);
+                    let id_turnamen = command.parameter[0];
+                    if (!isNumber(id_turnamen)) {
+                        const recTur = await getDataRow('*', 'turnamen', {'alias': id_turnamen.toLowerCase()});
+                        if (recTur.success) id_turnamen = recTur.data[0].id_turnamen;
+                    } 
+
                     const recTurnamen = await getDataRow('*', 'turnamen', {'id_turnamen': id_turnamen});
                     if (recTurnamen.success){
-                        sock.sendPresenceUpdate("composing", senderJid);
                         // Buat Peringkat
                         const peringkat = await getPeringkat(id_turnamen);
                         await generateImage(peringkat, senderNumber);
@@ -297,37 +324,78 @@ async function startBot() {
 
                 sock.sendPresenceUpdate("composing", senderJid);
                 
-                if (command.paramter.length>=3){
-                    const id_pemain = command.paramter[0];
-                    const id_lawan = command.paramter[1];
-                    const id_turnamen = command.paramter[2];
+                if (command.parameter.length>=3){
 
-                    console.log(id_pemain, id_lawan, id_turnamen)
+                    let id_pemain = command.parameter[0];
+                    //console.log('ID ----->', id_pemain);
+                    let nama_pemain = '';
+                    if (!isNumber(id_pemain)){
+                        const recPemain1 = await getIDPlayer(id_pemain);
+                        //console.log(recPemain1.success);
+                        if (recPemain1.success) { 
+                            id_pemain = recPemain1.data[0].id_pemain;
+                            nama_pemain = recPemain1.data[0].nama_pemain;
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[0]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return; 
+                        }
+                    } else {
+                        const recPemain2 = await getDataRow('*', 'pemain', {'id_pemain': id_pemain});
+                        if (!recPemain2.success) {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[0]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return;
+                        }
+                        nama_pemain = recPemain2.data[0].nama_pemain;
+                    }
+
+
+                    let id_lawan = command.parameter[1];
+                    nama_lawan = '';
+                    if (!isNumber(id_lawan)){
+                        const recPemain3 = await getIDPlayer(id_lawan);
+                        //console.log(recPemain3);
+                        if (recPemain3.success) { 
+                            id_lawan = recPemain3.data[0].id_pemain;
+                            nama_lawan = recPemain3.data[0].nama_pemain;
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[1]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return; 
+                        }
+                    } else {
+                        const recPemain4 = await getDataRow('*', 'pemain', {'id_pemain': id_lawan});
+                        if (!recPemain4.success) {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[1]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return;
+                        }
+                        nama_lawan = recPemain4.data[0].nama_pemain;
+                    }
                     
-                    const recPemain1 = await getDataRow('*', 'pemain', {'id_pemain': id_pemain});
-                    if (!recPemain1.success) {
-                        await sock.sendMessage(senderJid, { text: `ID Pemain : ${id_pemain} tidak ditemukan.` }); 
-                        delete userSessions[sender];
-                        return;
-                    }
-                    const nama_pemain = recPemain1.data[0].nama_pemain;
+                    let id_turnamen = command.parameter[2];
+                    let nama_turnamen = '';
+                    if (!isNumber(id_turnamen)){
+                        const recTur1 = await getDataRow('*', 'turnamen', {'alias': id_turnamen.toLowerCase()});
+                        if (recTur1.success) { 
+                            id_turnamen = recTur1.data[0].id_turnamen;
+                            nama_turnamen = recTur1.data[0].nama_turnamen;
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[2]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return; 
+                        }
+                    } else {
+                        const recTur2 = await getDataRow('*', 'turnamen', {'id_turnamen': id_turnamen});
+                        if (recTur2.success) { 
+                            id_turnamen = recTur2.data[0].id_turnamen;
+                            nama_turnamen = recTur2.data[0].nama_turnamen;
+                        } 
 
-                    const recPemain2 = await getDataRow('*', 'pemain', {'id_pemain': id_lawan});
-                    if (!recPemain2.success) {
-                        await sock.sendMessage(senderJid, { text: `ID Lawan : ${id_lawan} tidak ditemukan.` }); 
-                        delete userSessions[sender];
-                        return;
-                    }
-                    const nama_lawan = recPemain2.data[0].nama_pemain;
+                    }                        
 
-                    const recTurnamen = await getDataRow('*', 'turnamen', {'id_turnamen': id_turnamen});
-                   
-                    if (!recTurnamen.success) {
-                        await sock.sendMessage(senderJid, { text: `ID Turnamen : ${id_turnamen} tidak ditemukan.` }); 
-                        delete userSessions[sender];
-                        return;
-                    }
-
+                    //console.log(id_pemain, id_lawan, id_turnamen);
                     const recH2H = await findHeadToHead(id_pemain, id_lawan, id_turnamen);
 
                     //console.log(recH2H.data);
@@ -379,6 +447,70 @@ async function startBot() {
             } else if (text.trim().toLowerCase()===GMP_MULAI_IMPORT_DATA) {
                 await sock.sendMessage(senderJid, { text: `Masukkan _File Excel_ yang akan diimport :` });
                 userSessions[sender] = { step: IMPORTDATA_MULAI } 
+            } else if (menu.toLowerCase()===GMP_POSISI_TERBAIK){
+                if (command.parameter){
+                    sock.sendPresenceUpdate("composing", senderJid);
+
+                    let id_pemain = command.parameter[0];
+                    let nama_pemain = '';
+                    if (!isNumber(id_pemain)){
+                        const recPemain1 = await getIDPlayer(id_pemain);
+
+                        if (recPemain1.success) { 
+                            id_pemain = recPemain1.data[0].id_pemain;
+                            nama_pemain = recPemain1.data[0].nama_pemain;
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[0]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return; 
+                        }
+                    } else {
+                        const recPemain2 = await getDataRow('*', 'pemain', {'id_pemain': id_pemain});
+                        if (!recPemain2.success) {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[0]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return;
+                        }
+                        nama_pemain = recPemain2.data[0].nama_pemain;
+                    }
+
+                    let id_turnamen = command.parameter[1];
+                    let nama_turnamen = '';
+                    if (!isNumber(id_turnamen)){
+                        const recTur1 = await getDataRow('*', 'turnamen', {'alias': id_turnamen.toLowerCase()});
+                        if (recTur1.success) { 
+                            id_turnamen = recTur1.data[0].id_turnamen;
+                            nama_turnamen = recTur1.data[0].nama_turnamen;
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data ${command.parameter[1]} tidak ditemukan.` });
+                            delete userSessions[sender];
+                            return; 
+                        }
+                    } else {
+                        const recTur2 = await getDataRow('*', 'turnamen', {'id_turnamen': id_turnamen});
+                        if (recTur2.success) { 
+                            id_turnamen = recTur2.data[0].id_turnamen;
+                            nama_turnamen = recTur2.data[0].nama_turnamen;
+                        } 
+                    }                    
+                
+                    // Menncetak Posisi
+                    const recPosisi = await getPosisiTerbaik(id_turnamen, id_pemain);
+                    console.log(recPosisi.data);
+                    if (!recPosisi.success){
+                        await sock.sendMessage(senderJid, { text: `Data tidak ditemukan.` });
+                        delete userSessions[sender];
+                        return;
+                    }
+                    
+                    let strPosisi=`*Posisi Terbaik ${nama_pemain} Pada Turnamen ${nama_turnamen}:*\n\n`;
+                    recPosisi.data.forEach(item => {
+                        strPosisi += `Nama Lawan : ${item.nama_lawan}\nBabak : ${item.keterangan_babak}\nPool : ${item.pool}\nSkor : ${item.skor_pemain} / ${item.skor_lawan}\nPoin : ${item.poin}\n\n`;                
+                    });
+                    await sock.sendMessage(senderJid, { text: strPosisi });
+                }
+
+                delete userSessions[sender];
             }
 
             // Import Data

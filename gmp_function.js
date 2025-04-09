@@ -227,42 +227,123 @@ async function generateImage(recParam, senderNumber) {
   console.log('✅ Gambar ranking berhasil dibuat:', outputPath);
 }
 
+
 function parsePerintah(text) {
-  // Normalisasi: hapus spasi berlebih
-  text = text.replace(/\s+/g, ' ')
-          .replace(/;/g, ',')
-          .replace(/tampilkan/gi, 'buat')
-          .replace(/h2h/gi, 'head to head')
-          .replace(/pertemuan langsung/gi, 'head to head')
-          .replace(/rangking/gi, 'ranking')
-          .replace(/peringkat/gi, 'ranking')
-          .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
-          .trim();
+  // Normalisasi awal
+  text = text
+    .replace(/\s+/g, ' ')
+    .replace(/;/g, ',')
+    .replace(/tampilkan/gi, 'buat')    
+    .replace(/h2h/gi, 'head to head')
+    .replace(/pertemuan langsung/gi, 'head to head')
+    .replace(/rangking|peringkat/gi, 'ranking')
+    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
+    .trim();
 
-  // Daftar kata penghubung yang mungkin digunakan
-  const connectors = ['untuk', 'antara', 'dengan', 'sampai', 'dari', 'ke', 'pada', 'hingga'];
+  // Kata pemisah umum
+  const separators = ['antara', 'dengan', 'untuk', 'pada', 'turnamen', 'dan'];
 
-  // Cari posisi kata penghubung pertama
-  let splitIndex = -1;
-  for (let word of connectors) {
-    let i = text.toLowerCase().indexOf(word);
-    if (i !== -1 && (splitIndex === -1 || i < splitIndex)) {
-      splitIndex = i;
+  // Temukan pemisah pertama untuk potong perintah
+  let firstSeparatorIndex = -1;
+  for (let word of separators) {
+    const index = text.toLowerCase().indexOf(' ' + word + ' ');
+    if (index !== -1 && (firstSeparatorIndex === -1 || index < firstSeparatorIndex)) {
+      firstSeparatorIndex = index;
     }
   }
 
-  // Ambil bagian perintah
-  const perintah = splitIndex !== -1 ? text.substring(0, splitIndex).trim() : text;
+  const perintah = firstSeparatorIndex !== -1 ? text.substring(0, firstSeparatorIndex).trim() : text;
+  const paramText = firstSeparatorIndex !== -1 ? text.substring(firstSeparatorIndex).trim() : '';
 
-  // Ambil semua angka dengan minimal 6 digit
-  const ids = text.match(/\d{6,}/g) || [];
+  // Ambil angka 6 digit atau lebih
+  let numbers = paramText.match(/\d{6,}/g) || [];
 
-  //return [perintah, ...ids];
-  return [{'perintah': perintah, 
-    'paramter': ids,
+  // Ambil frasa dengan memecah berdasarkan pemisah
+  const phrases = paramText
+    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan)\b/gi, '|') // ganti penghubung jadi pemisah
+    .split('|')
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && !/^\d{6,}$/.test(s)); // Hanya ambil frasa non-angka
+
+  // Gabungkan parameter
+  const parameters = [...numbers, ...phrases];
+
+  return [{
+    perintah: perintah,
+    parameter: parameters
   }];
+}
+  
+/*
+function parsePerintah(text) {
+  // Normalisasi typo & sinonim
+  text = text
+    .replace(/\s+/g, ' ')
+    .replace(/pada/gi, '')
+    .replace(/antara/gi, '')
+    .replace(/;/g, ',')
+    .replace(/tampilkan/gi, 'buat')
+    .replace(/rangking|peringkat/gi, 'ranking')
+    .replace(/h2h|pertemuan langsung/gi, 'head to head')
+    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
+    .replace(/\bpertma\b/gi, 'Pertama')
+    .trim();
+
+  const kataPenghubung = ['antara', 'dengan', 'untuk', 'pada', 'dari', 'ke'];
+  const kataAbaikan = ['turnamen'];
+
+  const words = text.split(' ');
+  const perintahWords = [];
+  const parameter = [];
+  let collectingParam = false;
+  let tempName = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const next = words[i + 1];
+
+    const isCapital = /^[A-Z]/.test(word);
+    const isNumber = /^\d{6,}$/.test(word);
+    const isKataHubung = kataPenghubung.includes(word.toLowerCase());
+    const isIgnore = kataAbaikan.includes(word.toLowerCase());
+
+    // Deteksi parameter:
+    if (isIgnore) continue;
+
+    if (isNumber || isCapital) {
+      collectingParam = true;
+      tempName.push(word);
+
+      // Jika next bukan kapital, akhiri nama
+      if (!next || !/^[A-Z]/.test(next)) {
+        parameter.push(tempName.join(' '));
+        tempName = [];
+      }
+
+    } else if (collectingParam && !isKataHubung) {
+      if (tempName.length > 0) {
+        parameter.push(tempName.join(' '));
+        tempName = [];
+      }
+    } else if (!collectingParam) {
+      perintahWords.push(word);
+    }
+  }
+
+  if (tempName.length > 0) {
+    parameter.push(tempName.join(' '));
+  }
+
+  return [{
+    perintah: perintahWords.join(' ').trim(),
+    parameter
+  }];
+} */
+
+function isNumber(value) {
+  return !isNaN(value) && !isNaN(parseFloat(value));
 }
 
 module.exports = {
-  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, parsePerintah
+  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, parsePerintah, isNumber
 };
