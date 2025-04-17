@@ -161,7 +161,7 @@ async function generateImage(recParam, senderNumber) {
   //const recPeringkat = await getPeringkat(id_turnamen_param);
 
   // Load background
-  const backgroundPath = './src/images/background.png';
+  const backgroundPath = `./src/images/${recParam.turnamen[0].id_turnamen}.png`;
   const background = await loadImage(backgroundPath);
   ctx.drawImage(background, 0, 0, canvasWidth, canvasHeight);
 
@@ -184,7 +184,7 @@ async function generateImage(recParam, senderNumber) {
   // Turnamen
   ctx.fillStyle = '#760000';
   ctx.font = 'bold 16px Arial';
-  ctx.fillText('RANGKING PEMAIN PTM GMP', 100, 150);
+  ctx.fillText('RANKING PEMAIN PTM GMP', 100, 150);
   ctx.fillStyle = '#000000';
   ctx.font = '16px Arial';
   const turnamen = recParam.turnamen[0].nama_turnamen;
@@ -227,7 +227,148 @@ async function generateImage(recParam, senderNumber) {
   console.log('✅ Gambar ranking berhasil dibuat:', outputPath);
 }
 
+async function generateImage2(recParam, senderNumber) {
+  const rowHeight = 25;
+  const rowHeightHeader = 220;
+  const canvasWidth = 794;
+  const canvasHeight = 1123;
 
+  const canvas = createCanvas(canvasWidth, canvasHeight);
+  const ctx = canvas.getContext('2d');
+
+  const backgroundPath = `./src/images/${recParam.turnamen[0].id_turnamen}info.png`;
+  const background = await loadImage(backgroundPath);
+  ctx.drawImage(background, 0, 0, canvasWidth, canvasHeight);
+
+  const logoPath = './src/images/logo.png';
+  if (fs.existsSync(logoPath)) {
+    const logo = await loadImage(logoPath);
+    ctx.drawImage(logo, 20, 20, 100, 100);
+  } else {
+    console.warn('⚠️ Logo tidak ditemukan di:', logoPath);
+  }
+
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText('PTM GEDUNG MERAH PUTIH', 150, 60);
+  ctx.font = '20px Arial';
+  ctx.fillText('Jln. Pemuda (SMAN 4 Tanjungpinang)', 150, 90);
+
+  ctx.fillStyle = '#FF0000';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText('RANKING PEMAIN PTM GMP', 200, 150);
+  ctx.fillStyle = '#000000';
+  ctx.font = '20px Arial';
+  const turnamen = recParam.turnamen[0].nama_turnamen;
+  ctx.fillText(turnamen, 200, 175);
+  const tgl = 'Tanggal ' + DateToWIB(recParam.turnamen[0].tgl_turnamen);
+  ctx.fillText(tgl, 200, 195);
+
+  const startY = rowHeightHeader + 30;
+  const fotoSize = 100;
+  let j=0;
+  for (let i = 0; i < recParam.data.length; i++) {
+    const pemain = recParam.data[i];
+    const y = startY + j * (fotoSize+20) //rowHeight;
+
+    let yy = (i+1)%3;
+    if (yy===0) {
+        j++;
+        yy=2;
+    } else {
+      yy--;
+    }
+      
+    ctx.font = 'Bold 24px Arial';
+    ctx.fillText(`#${i + 1}`, 40 + yy*250 + fotoSize , y+10);
+    ctx.font = '16px Arial';
+    ctx.fillText(pemain.id_pemain, 40 + yy*250 + fotoSize, y+10+rowHeight);
+    ctx.fillText(pemain.nama_pemain, 40 + yy*250 + fotoSize, y+10+rowHeight*2);
+    ctx.fillText(pemain.total_poin, 40 + yy*250 + fotoSize, y+10+rowHeight*3);
+
+    let fotoPath = `./src/images/${pemain.id_pemain}.png`;
+    if (fs.existsSync(fotoPath)) {
+      const foto = await loadImage(fotoPath);
+      ctx.drawImage(foto, 30 + yy*250, y - fotoSize + 90, fotoSize, fotoSize);
+    } else {
+      console.warn('⚠️ Foto pemain tidak ditemukan:', fotoPath);
+    }
+  }
+
+  ctx.font = 'italic 16px Arial';
+  const tglCetak = 'Dicetak pada: ' + DateTimeIndonesia(new Date());
+  ctx.fillText(tglCetak, 100, canvasHeight - 30);
+
+  const outputPath = './src/images/infoturnamen_' + recParam.turnamen[0].id_turnamen + '_' + senderNumber + '.png';
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+  const buffer = canvas.toBuffer('image/png');
+  fs.writeFileSync(outputPath, buffer);
+
+  console.log('✅ Gambar ranking berhasil dibuat:', outputPath);
+}
+
+
+function parsePerintah(text) {
+  // Cek pola khusus: tambah|perbaiki|hapus tabel {param1, param2, ...}
+  const tableCommandMatch = text.match(/^(tambah|perbaiki|hapus)\s+tabel\s*\{([^}]+)\}/i);
+  if (tableCommandMatch) {
+    const perintah = tableCommandMatch[1].toLowerCase();
+    const rawParams = tableCommandMatch[2];
+    const parameters = ['tabel', ...rawParams.split(',').map(p => p.trim()).filter(p => p)];
+    return [{
+      perintah: perintah,
+      parameter: parameters
+    }];
+  }
+
+  // Normalisasi awal
+  text = text
+    .replace(/\s+/g, ' ')
+    .replace(/;/g, ',')
+    .replace(/tampilkan/gi, 'buat')    
+    .replace(/h2h/gi, 'head to head')
+    .replace(/pertemuan langsung/gi, 'head to head')
+    .replace(/rangking|peringkat/gi, 'ranking')
+    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
+    .trim();
+
+  // Kata pemisah umum
+  const separators = ['antara', 'dengan', 'untuk', 'pada', 'turnamen', 'dan'];
+
+  // Temukan pemisah pertama untuk potong perintah
+  let firstSeparatorIndex = -1;
+  for (let word of separators) {
+    const index = text.toLowerCase().indexOf(' ' + word + ' ');
+    if (index !== -1 && (firstSeparatorIndex === -1 || index < firstSeparatorIndex)) {
+      firstSeparatorIndex = index;
+    }
+  }
+
+  const perintah = firstSeparatorIndex !== -1 ? text.substring(0, firstSeparatorIndex).trim() : text;
+  const paramText = firstSeparatorIndex !== -1 ? text.substring(firstSeparatorIndex).trim() : '';
+
+  // Ambil angka 6 digit atau lebih
+  let numbers = paramText.match(/\d{6,}/g) || [];
+
+  // Ambil frasa dengan memecah berdasarkan pemisah
+  const phrases = paramText
+    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan)\b/gi, '|') // ganti penghubung jadi pemisah
+    .split('|')
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && !/^\d{6,}$/.test(s)); // Hanya ambil frasa non-angka
+
+  // Gabungkan parameter
+  const parameters = [...numbers, ...phrases];
+
+  return [{
+    perintah: perintah,
+    parameter: parameters
+  }];
+}
+
+/*
 function parsePerintah(text) {
   // Normalisasi awal
   text = text
@@ -274,7 +415,6 @@ function parsePerintah(text) {
   }];
 }
   
-/*
 function parsePerintah(text) {
   // Normalisasi typo & sinonim
   text = text
@@ -345,5 +485,5 @@ function isNumber(value) {
 }
 
 module.exports = {
-  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, parsePerintah, isNumber
+  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, generateImage2, parsePerintah, isNumber
 };

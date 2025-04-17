@@ -29,20 +29,34 @@ async function insertData(table, data) {
       const placeholders = values.map(() => '?').join(', ');
       
       const query = `INSERT INTO ${table} (${keys}) VALUES (${placeholders})`;
-      const [result] = await connection.execute(query, values);
-      let status = result.length?true:false;  
+      const [result] = await connection.execute(query, values); 
+      msg="✅ Proses menambah data berhasil."; 
 
       return {
-        'module': modul,
-        'success': status,
-        'message': 'Berhasil Menambah Data.',
-        'data': result,
+      'module': modul,
+      'success': true,
+      'message': msg,
+      'data': result.affectedRows,
+    }
+
+  } catch (err) {
+      switch (err.errno) {
+        case 1062:
+          msg="❌ Duplikat data (PRIMARY/UNIQUE)";
+          break;
+        case 1048:
+          msg="❌ Gagal menambah. Data masih dipakai di tabel lain";
+          break;
+        case 1452:
+          msg="❌ Gagal menambah. Referensi tidak ditemukan";
+          break;
+        default:
+          msg="✅ Proses menambah data berhasil.";
       }
-  } catch (error) {
     return {
       'module': modul,
       'success': false,
-      'message': 'Gagal Menambah Data.',
+      'message': msg,
       'data': {},
     }  
   } finally {
@@ -77,20 +91,39 @@ async function updateData(table, data, condition) {
       const values = [...Object.values(data), ...Object.values(condition)];
       
       const query = `UPDATE ${table} SET ${setClause} WHERE ${conditionClause}`;
-      const [result] = await connection.execute(query, values);
-      let status = result.length?true:false;  
-
+      //console.log(query, values);
+      const [result] = await connection.execute(query, values); 
+          msg="✅ Proses memperbaiki data berhasil.";
+ 
       return {
         'module': modul,
-        'success': status,
-        'message': 'Berhasil Memperbaiki Data.',
+        'success': true,
+        'message': msg,
         'data': result,
       }      
-  } catch (error) {
+  } catch (err) {
+
+    switch (err.errno) {
+      case 1062:
+        msg="❌ Duplikat data (PRIMARY/UNIQUE)";
+        break;
+      case 1054:
+        msg="❌ Gagal mempebaiki. Kolom tidak ada.";
+        break;
+      case 1366:
+          msg="❌ Gagal memperbaiki. Format data tidak sesuai dengan tipe kolom.";
+          break;
+        case 1452:
+        msg="❌ Gagal memperbaiki. Referensi tidak ditemukan.";
+        break;
+      default:
+        msg="✅ Proses memperbaiki data berhasil.";
+    } 
+
     return {
       'module': modul,
       'success': false,
-      'message': 'Gagal Memperbaiki Data.',
+      'message': msg,
       'data': {},
     }    
   } finally {
@@ -122,20 +155,35 @@ async function deleteData(table, condition) {
       const values = Object.values(condition);
       
       const query = `DELETE FROM ${table} WHERE ${conditionClause}`;
-      const [result] = await connection.execute(query, values);
-      let status = result.length?true:false;  
+      const [result] = await connection.execute(query, values); 
+          msg="✅ Proses menghapus data berhasil.";
 
       return {
         'module': modul,
-        'success': status,
-        'message': 'Berhasil Menghapus Data.',
+        'success': true,
+        'message': msg,
         'data': result,
       }      
-  } catch (error) {
+  } catch (err) {
+
+    switch (err.errno) {
+      case 1451:
+        msg="❌ Gagal menghapus. Data masih digunakan oleh tabel lain (terikat foreign key).";
+        break;
+      case 1064:
+        msg="❌ Gagal menghapus. Kesalahan sintaks SQL.";
+        break;
+      case 1051:
+        msg="❌ Gagal menghapus. Tabel yang ingin digunakan tidak ditemukan.";
+        break;
+      default:
+        msg="✅ Proses menghapus data berhasil.";
+    }
+
     return {
       'module': modul,
       'success': false,
-      'message': 'Gagal Menghapus Data.',
+      'message': msg,
       'data': {},
     }    
   } finally {
@@ -270,8 +318,8 @@ async function executeSQL(sql) {
 
   if (connection===null){
     console.log("MySQL Server Belum Aktif...");
-    return;
-  }
+    return [];
+  } 
   try {
     const [rows] = await connection.execute(sql);
     return rows;
@@ -589,7 +637,7 @@ async function getIDPlayer(param) {
       //console.log(query, likeValues);
 
       const [result] = await connection.query(query, likeValues);
-      const status = result? true: false;
+      const status = result.length? true: false;
       //console.log(result);
 
       return {
