@@ -3,7 +3,7 @@ const { Session } = require("inspector/promises");
 const fs = require("fs");
 const { error } = require("console");
 const {getDataRow, insertData, updateData, deleteData, getPeringkat, findHeadToHead, resetAutoincrement, getIDPlayer, getPosisiTerbaik} = require('./src/model/gmp_service');
-const { handleFile, readFileExcel, generateImage, generateImage2, DateToWIB, parsePerintah, isNumber} = require('./src/model/gmp_function');
+const { handleFile, readFileExcel, generateImage, generateImage2, DateToWIB, parsePerintah, isNumber, generateImageReport} = require('./src/model/gmp_function');
 require("dotenv").config();
 
 const path = 'parameters.json';
@@ -23,6 +23,7 @@ const GMP_RANGKING_PEMAIN = `buat ranking pemain`;
 const GMP_INFOGRAFIS_RANGKING_PEMAIN = `buat infografis ranking pemain`;
 const GMP_HEAD_TO_HEAD = 'buat head to head pemain';
 const GMP_DISP_TURNAMEN = 'buat data turnamen';
+const GMP_RENCANA_TURNAMEN = 'buat rencana turnamen';
 const GMP_DISP_PEMAIN = 'buat data pemain';
 const GMP_POSISI_TERBAIK = `buat posisi terbaik`;
 
@@ -139,6 +140,15 @@ function parseData(input) {
     return [command, table, ...values];
   }
 
+  function DateToStr(date) {
+    if (!date) return '-';
+    const d = new Date(date);
+    return `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1)
+      .toString()
+      .padStart(2, '0')}-${d.getFullYear()}`;
+  }
+
+
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("./auth_multi_device"); 
 
@@ -250,7 +260,7 @@ async function startBot() {
 
                 if (session.step===INPUT_SQL) {
                     const parseInput = parseData(text);
-                    console.log('iiiiiiiiiiiiiiiiii',text);
+                    console.log(text);
                     console.log(parseInput);
                     let data = '';
                     let whereSQL = '';
@@ -518,7 +528,7 @@ async function startBot() {
                 delete userSessions[sender];
             
             } else if (menu.toLowerCase()===GMP_DISP_PEMAIN){
-                
+                sock.sendPresenceUpdate("composing", senderJid);
                 const recPemain = await getDataRow('*', 'pemain');
                 //console.log(recTurnamen.data);
                 let strPemain = `*DAFTAR PEMAIN/PESERTA TURNAMEN*\n\n`;
@@ -530,7 +540,7 @@ async function startBot() {
                 delete userSessions[sender];
 
             } else if (menu.toLowerCase()===GMP_DISP_TURNAMEN){
-                
+                sock.sendPresenceUpdate("composing", senderJid);
                 const recTurnamen = await getDataRow('*', 'turnamen');
                 //console.log(recTurnamen.data);
                 let strTurnamen = `*DAFTAR TURNAMEN*\n\n`;
@@ -538,6 +548,54 @@ async function startBot() {
                     strTurnamen += `${item.id_turnamen} - ${item.nama_turnamen}\n`;                
                 });
                 await sock.sendMessage(senderJid, { text: strTurnamen });
+                delete userSessions[sender];
+
+            } else if (menu.toLowerCase()===GMP_RENCANA_TURNAMEN){
+                sock.sendPresenceUpdate("composing", senderJid);
+                const recTurnamen = await getDataRow('*', 'turnamen');
+                console.log(command.parameter);
+
+                if (recTurnamen.success){
+                    let periode ='';
+                    if (command.parameter.length) {
+                        periode =  `Tahun : ${command.parameter[0]}`;
+                        generateImageReport({
+                            title: 'JADWAL RENCANA TURNAMEN INTERNAL',
+                            subtitle: 'PTM GEDUNG MERAH PUTIH',
+                            periode: periode,
+                            output: `./src/images/laporan_turnamen_${senderNumber}.png`,
+                            columns: [
+                              { key: 'id', label: 'ID', x: 50 },
+                              { key: 'nama_turnamen', label: 'NAMA TURNAMEN', x: 90 },
+                              { key: 'tgl_turnamen', label: 'RENCANA', x: 450, format: DateToStr },
+                              { key: 'tgl_realisasi', label: 'REALISASI', x: 550, format: DateToStr },
+                              { key: 'alias', label: 'KUNCI', x: 650 },
+                            ],
+                            data: recTurnamen.data,
+                          });
+                    } else {
+                        console.log('Semua Turnamen');
+                        generateImageReport({
+                            title: 'JADWAL RENCANA TURNAMEN INTERNAL',
+                            subtitle: 'PTM GEDUNG MERAH PUTIH',
+                            periode: periode,
+                            output: `./src/images/laporan_turnamen_${senderNumber}.png`,
+                            columns: [
+                              { key: 'id', label: 'ID', x: 50 },
+                              { key: 'nama_turnamen', label: 'NAMA TURNAMEN', x: 90 },
+                              { key: 'tgl_turnamen', label: 'RENCANA', x: 450, format: DateToStr },
+                              { key: 'tgl_realisasi', label: 'REALISASI', x: 550, format: DateToStr },
+                              { key: 'tahun', label: 'TAHUN', x: 650 },
+                            ],
+                            data: recTurnamen.data,
+                          });
+                    }
+                    await sock.sendMessage(senderJid, {image: {url: `./src/images/laporan_turnamen_${senderNumber}.png`}, caption: 'Jadwal Rencana Turnamen'});
+                } else {
+                    await sock.sendMessage(senderJid, { text: `Data Rencana Turnamen Tidak Ditemukan...` });
+                }
+                
+
                 delete userSessions[sender];
 
             } else if (text.trim().toLowerCase()===GMP_MULAI_IMPORT_DATA) {

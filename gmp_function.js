@@ -135,6 +135,16 @@ const DateToWIB = (date) => {
   return `${day} ${monthName} ${year}`;
 }
 
+// Fungsi untuk mengonversi Date ke format Indonesia (DD/MM/YYYY)
+const DateToStr = (date) => {
+  if (date===null) return `N/A`;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0'); // Bulan dimulai dari 0
+  const year = date.getFullYear();
+  //const monthName = getIndonesianMonthName(date);
+  return `${day}-${month}-${year}`;
+}
+
 // Fungsi untuk mengonversi Date ke format lengkap Indonesia (Hari, DD Bulan YYYY HH:mm:ss)
 const DateTimeIndonesia = (date, timezone = 'WIB') => {
   //const dayName = getIndonesianDayName(date);
@@ -309,8 +319,99 @@ async function generateImage2(recParam, senderNumber) {
   console.log('✅ Gambar ranking berhasil dibuat:', outputPath);
 }
 
+async function generateImageReport({ data, columns, title, subtitle = '', periode = '', output = 'laporan.png' }) {
+    var rowHeightHeader = 220;
+    const rowHeight = 25;
+  const canvasWidth = 794;
+  const canvasHeight = 1123;
+
+  const canvas = createCanvas(canvasWidth, canvasHeight);
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  const backgroundPath = './src/images/background.png';
+  if (fs.existsSync(backgroundPath)) {
+    const background = await loadImage(backgroundPath);
+    ctx.drawImage(background, 0, 0, canvasWidth, canvasHeight);
+  }
+
+  // Logo
+  const logoPath = './src/images/logo.png';
+  if (fs.existsSync(logoPath)) {
+    const logo = await loadImage(logoPath);
+    ctx.drawImage(logo, 20, 20, 100, 100);
+  }
+
+  // Header Institusi
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillText('PTM GEDUNG MERAH PUTIH', 150, 60);
+  ctx.font = '20px Arial';
+  ctx.fillText('Jln. Pemuda (SMAN 4 Tanjungpinang)', 150, 90);
+
+  // Judul & Tahun
+    let rowPos =125+rowHeight;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#760000';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText(title, canvasWidth / 2, rowPos);
+
+    ctx.fillStyle = '#000000';
+    ctx.font = '20px Arial';
+    if (subtitle) {
+        rowPos += rowHeight;
+        ctx.fillText(subtitle, canvasWidth / 2, rowPos);
+    }
+    if (periode) {
+        rowPos += rowHeight;
+        ctx.fillText(`Tahun : ${periode}`, canvasWidth / 2, rowPos);
+    }
+
+    rowHeightHeader = rowPos + rowHeight*2;    
+  ctx.textAlign='left';
+  // Header Kolom
+  ctx.font = 'bold 18px Arial';
+  columns.forEach((col, i) => {
+    ctx.fillText(col.label, col.x, rowHeightHeader);
+  });
+
+  // Data Rows
+  ctx.font = '16px Arial';
+  data.forEach((item, idx) => {
+    const y = rowHeightHeader + (idx + 1) * rowHeight;
+    columns.forEach((col) => {
+      const value = typeof col.format === 'function' ? col.format(item[col.key]) : item[col.key] || '-';
+      ctx.fillText(value, col.x, y);
+    });
+  });
+
+  // Footer Tanggal Cetak
+  ctx.font = 'italic 16px Arial';
+  ctx.fillText('Dicetak pada: ' + DateTimeIndonesia(new Date()), 50, canvasHeight - 30);
+
+  // Simpan Gambar
+  const outputPath = path.resolve(output);
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+  const buffer = canvas.toBuffer('image/png');
+  fs.writeFileSync(outputPath, buffer);
+
+  console.log('✅ Laporan gambar berhasil dibuat:', outputPath);
+}
+
 
 function parsePerintah(text) {
+  // << Tambahan di sini
+  const rencanaTurnamenMatch = text.match(/tampilkan\s+rencana\s+turnamen\s+tahun\s+(\d{4})/i);
+  if (rencanaTurnamenMatch) {
+    const tahun = rencanaTurnamenMatch[1];
+    return [{
+      perintah: 'buat rencana turnamen',
+      parameter: [tahun]
+    }];
+  }
+
   // Cek pola khusus: tambah|perbaiki|hapus tabel {param1, param2, ...}
   const tableCommandMatch = text.match(/^(tambah|perbaiki|hapus)\s+tabel\s*\{([^}]+)\}/i);
   if (tableCommandMatch) {
@@ -327,7 +428,7 @@ function parsePerintah(text) {
   text = text
     .replace(/\s+/g, ' ')
     .replace(/;/g, ',')
-    .replace(/tampilkan/gi, 'buat')    
+    .replace(/tampilkan/gi, 'buat')
     .replace(/h2h/gi, 'head to head')
     .replace(/pertemuan langsung/gi, 'head to head')
     .replace(/rangking|peringkat/gi, 'ranking')
@@ -485,5 +586,5 @@ function isNumber(value) {
 }
 
 module.exports = {
-  handleFile, readFileExcel, DateToWIB, DateTimeIndonesia, generateImage, generateImage2, parsePerintah, isNumber
+  handleFile, readFileExcel, DateToWIB, DateToStr, DateTimeIndonesia, generateImage, generateImage2, generateImageReport, parsePerintah, isNumber
 };
