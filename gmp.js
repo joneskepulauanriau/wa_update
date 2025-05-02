@@ -17,6 +17,7 @@ const SETOFF = 'OFF';
 // Execute Data
 const TABLE_TURNAMEN = 'turnamen';
 const TABLE_PENGGUNA = 'pengguna';
+const TABLE_DAFTAR = 'daftar';
 
 // Definisi Perintah 
 const GMP_RANGKING_PEMAIN = `buat ranking pemain`;
@@ -300,6 +301,12 @@ async function startBot() {
                                 const recTur1 = await updateData(TABLE_TURNAMEN, data, whereSQL);
                                 await sock.sendMessage(senderJid, { text: recTur1.message });                                
                             }
+                        } if (command.parameter[0].toLowerCase()===TABLE_DAFTAR) {
+                            if (menu==='hapus') {
+                                whereSQL = {'id_pemain': command.parameter[1], 'id_turnamen': command.parameter[2]};
+                                const recDaftar = await deleteData(TABLE_DAFTAR, whereSQL);
+                                await sock.sendMessage(senderJid, { text: recDaftar.message });
+                            } 
                         } else if (command.parameter[0].toLowerCase()===TABLE_PENGGUNA) {
                             if (menu==='tambah') {
                                 data = {'no_hp': command.parameter[1], 'nama_pengguna': command.parameter[2], 'id_pemain': command.parameter[3]};
@@ -318,9 +325,8 @@ async function startBot() {
                             }
                         }
                     }
-                    return;
-
                     delete userSessions[sender];
+                    return;
                 } else if (session.step===IMPORTDATA_MULAI) {
                     //console.log(msg);
                     const rec = await handleFile(sock, msg);
