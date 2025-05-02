@@ -469,122 +469,87 @@ function parsePerintah(text) {
   }];
 }
 
-/*
-function parsePerintah(text) {
-  // Normalisasi awal
-  text = text
-    .replace(/\s+/g, ' ')
-    .replace(/;/g, ',')
-    .replace(/tampilkan/gi, 'buat')    
-    .replace(/h2h/gi, 'head to head')
-    .replace(/pertemuan langsung/gi, 'head to head')
-    .replace(/rangking|peringkat/gi, 'ranking')
-    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
-    .trim();
+function parseCommand(text) {
+  // 1. Tangani format khusus: tambah/perbaiki/hapus dengan objek & isi di dalam {}
+  const structuredCommand = text.match(/^(tambah|perbaiki(?: status| realisasi)?|hapus)\s+(\w+)\s*\{([^}]+)\}$/i);
+  if (structuredCommand) {
+    const perintah = structuredCommand[1].toLowerCase();
+    const objek = structuredCommand[2];
+    const isi = structuredCommand[3].split(',').map(v => v.trim());
+    return [{
+      perintah: perintah,
+      parameter: [objek, ...isi]
+    }];
+  }
 
-  // Kata pemisah umum
-  const separators = ['antara', 'dengan', 'untuk', 'pada', 'turnamen', 'dan'];
+  // 2. Tangani: tampilkan rencana turnamen tahun XXXX
+  const rencanaMatch = text.match(/tampilkan\s+rencana\s+turnamen\s+tahun\s+(\d{4})/i);
+  if (rencanaMatch) {
+    return [{
+      perintah: 'buat rencana turnamen',
+      parameter: [rencanaMatch[1]]
+    }];
+  }
 
-  // Temukan pemisah pertama untuk potong perintah
-  let firstSeparatorIndex = -1;
-  for (let word of separators) {
-    const index = text.toLowerCase().indexOf(' ' + word + ' ');
-    if (index !== -1 && (firstSeparatorIndex === -1 || index < firstSeparatorIndex)) {
-      firstSeparatorIndex = index;
+  // 3. Tangani: tampilkan profil pemain atas nama ...
+  const profilAtasNamaMatch = text.match(/tampilkan\s+profil(?:\s+\w+)?\s+atas\s+nama\s+(.+)/i);
+  if (profilAtasNamaMatch) {
+    const nama = profilAtasNamaMatch[1].trim();
+    return [{
+      perintah: 'buat profil',
+      parameter: [nama]
+    }];
+  }
+
+  // 4. Tangani: daftarkan [siapa pun] pada turnamen [namaTurnamen]
+  const daftarkanMatch = text.match(/^daftarkan\s+(.+?)\s+pada\s+turnamen\s+(.+)/i);
+  if (daftarkanMatch) {
+    const siapa = daftarkanMatch[1].trim().toLowerCase();
+    const turnamen = daftarkanMatch[2].trim();
+    if (siapa === 'saya') {
+      return [{ perintah: 'daftarkan saya', parameter: [turnamen] }];
+    } else {
+      return [{ perintah: 'daftarkan', parameter: [siapa, turnamen] }];
     }
   }
 
-  const perintah = firstSeparatorIndex !== -1 ? text.substring(0, firstSeparatorIndex).trim() : text;
-  const paramText = firstSeparatorIndex !== -1 ? text.substring(firstSeparatorIndex).trim() : '';
+  // 5. Normalisasi teks
+  const originalText = text.trim();
+  const normalText = originalText
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/tampilkan/gi, 'buat')
+    .replace(/pertemuan langsung/gi, 'head to head')
+    .replace(/h2h/gi, 'head to head')
+    .replace(/rangking|peringkat/gi, 'ranking')
+    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk');
 
-  // Ambil angka 6 digit atau lebih
-  let numbers = paramText.match(/\d{6,}/g) || [];
+  // 6. Tangkap perintah multi-kata di awal kalimat
+  const multiCommandMatch = normalText.match(/^(.+?)\s+(untuk|pada|antara|dengan)\s+/i);
+  const perintah = multiCommandMatch ? multiCommandMatch[1].trim() : normalText;
+  const paramText = multiCommandMatch
+    ? originalText.substring(multiCommandMatch[0].length + perintah.length).trim()
+    : '';
 
-  // Ambil frasa dengan memecah berdasarkan pemisah
-  const phrases = paramText
-    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan)\b/gi, '|') // ganti penghubung jadi pemisah
+  // 7. Tangkap angka panjang (ID) + frasa non-angka
+  const kodeAngka = [...(paramText.match(/\d{6,}/g) || [])];
+
+  const namaFrasa = paramText
+    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan|atas nama)\b/gi, '|')
     .split('|')
     .map(s => s.trim())
-    .filter(s => s.length > 0 && !/^\d{6,}$/.test(s)); // Hanya ambil frasa non-angka
-
-  // Gabungkan parameter
-  const parameters = [...numbers, ...phrases];
+    .filter(s => s.length > 0 && !/^\d{6,}$/.test(s));
 
   return [{
     perintah: perintah,
-    parameter: parameters
+    parameter: [...kodeAngka, ...namaFrasa]
   }];
 }
-  
-function parsePerintah(text) {
-  // Normalisasi typo & sinonim
-  text = text
-    .replace(/\s+/g, ' ')
-    .replace(/pada/gi, '')
-    .replace(/antara/gi, '')
-    .replace(/;/g, ',')
-    .replace(/tampilkan/gi, 'buat')
-    .replace(/rangking|peringkat/gi, 'ranking')
-    .replace(/h2h|pertemuan langsung/gi, 'head to head')
-    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
-    .replace(/\bpertma\b/gi, 'Pertama')
-    .trim();
-
-  const kataPenghubung = ['antara', 'dengan', 'untuk', 'pada', 'dari', 'ke'];
-  const kataAbaikan = ['turnamen'];
-
-  const words = text.split(' ');
-  const perintahWords = [];
-  const parameter = [];
-  let collectingParam = false;
-  let tempName = [];
-
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    const next = words[i + 1];
-
-    const isCapital = /^[A-Z]/.test(word);
-    const isNumber = /^\d{6,}$/.test(word);
-    const isKataHubung = kataPenghubung.includes(word.toLowerCase());
-    const isIgnore = kataAbaikan.includes(word.toLowerCase());
-
-    // Deteksi parameter:
-    if (isIgnore) continue;
-
-    if (isNumber || isCapital) {
-      collectingParam = true;
-      tempName.push(word);
-
-      // Jika next bukan kapital, akhiri nama
-      if (!next || !/^[A-Z]/.test(next)) {
-        parameter.push(tempName.join(' '));
-        tempName = [];
-      }
-
-    } else if (collectingParam && !isKataHubung) {
-      if (tempName.length > 0) {
-        parameter.push(tempName.join(' '));
-        tempName = [];
-      }
-    } else if (!collectingParam) {
-      perintahWords.push(word);
-    }
-  }
-
-  if (tempName.length > 0) {
-    parameter.push(tempName.join(' '));
-  }
-
-  return [{
-    perintah: perintahWords.join(' ').trim(),
-    parameter
-  }];
-} */
 
 function isNumber(value) {
   return !isNaN(value) && !isNaN(parseFloat(value));
 }
 
 module.exports = {
-  handleFile, readFileExcel, DateToWIB, DateToStr, DateTimeIndonesia, generateImage, generateImage2, generateImageReport, parsePerintah, isNumber
+  handleFile, readFileExcel, DateToWIB, DateToStr, DateTimeIndonesia, generateImage, generateImage2, generateImageReport, parseCommand, parsePerintah, isNumber
 };

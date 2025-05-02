@@ -42,7 +42,7 @@ async function insertData(table, data) {
   } catch (err) {
       switch (err.errno) {
         case 1062:
-          msg="❌ Duplikat data (PRIMARY/UNIQUE)";
+          msg= "_Data Tidak Dapat Ditambahkan, karena *Sudah Ada*..._" //"❌ Duplikat data (PRIMARY/UNIQUE)";
           break;
         case 1048:
           msg="❌ Gagal menambah. Data masih dipakai di tabel lain";
@@ -220,7 +220,7 @@ async function getDataRow(select, table, where = null) {
           const result={
             'module': modul,  
             'success': status, 
-            'message': 'Data berhasil dibaca...',
+            'message': status?'Data berhasil dibaca...':'Data tidak ada...',
             'data': rows,
           }
           return result;
@@ -236,6 +236,64 @@ async function getDataRow(select, table, where = null) {
           if (connection) await connection.end();
         }
   }
+
+  async function getDataRowQuery({ columns = ['*'], from = '', joins = [], filters = {}, orderBy = '', limit = null} = {}) {
+    const modul = 'getDataRowQuery';
+    const connection = await getConnection();
+  
+    try {
+
+      if (!from) throw new Error("Parameter 'from' (tabel utama) wajib diisi!");
+  
+      // 1. Select Columns
+      const columnClause = columns.length ? columns.join(', ') : '*';
+    
+      // 2. From & Joins
+      const joinClause = joins.map(j => {
+        const type = j.type?.toUpperCase() || 'INNER';
+        return `${type} JOIN ${j.table} ON (${j.on})`;
+      }).join('\n');
+    
+      // 3. Where Filters
+      const whereClause = Object.entries(filters)
+        .map(([key, value]) => {
+          const safeVal = typeof value === 'string' ? `'${value}'` : value;
+          return `${key} = ${safeVal}`;
+        }).join(' AND ');
+    
+      // 4. Tambahan Order dan Limit
+      const orderClause = orderBy ? `ORDER BY ${orderBy}` : '';
+      const limitClause = typeof limit === 'number' ? `LIMIT ${limit}` : '';
+    
+      // 5. Final SQL Build
+      const query = `SELECT ${columnClause} FROM ${from} ${joinClause} ${whereClause ? 'WHERE ' + whereClause : ''} ${orderClause} ${limitClause};`.trim();
+
+      console.log(query);
+
+          const [rows] = await connection.execute(query);
+          let status = rows.length?true:false;  
+
+          const result={
+            'module': modul,  
+            'success': status, 
+            'message': status?'Data berhasil dibaca...':'Data tidak ada...',
+            'data': rows,
+          }
+          return result;
+        } catch (error) {
+            const result={
+                'module': modul,  
+                'success':false, 
+                'message':error,
+                'data':{},
+              }
+              return result;
+        } finally {
+          if (connection) await connection.end();
+        }
+  }
+  
+
 
 async function fetchDataWithConditions(selectColumns, tableName, whereConditions = {}) {
     const connection = await getConnection();
@@ -722,6 +780,7 @@ module.exports = {
     updateData, 
     deleteData,
     getDataRow,
+    getDataRowQuery,
     fetchDataWithConditions, 
     getQuery, 
     resetAutoincrement, 
