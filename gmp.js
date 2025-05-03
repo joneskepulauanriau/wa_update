@@ -440,13 +440,18 @@ async function startBot() {
 
                     const recTurnamen = await getDataRow('*', 'turnamen', {'id_turnamen': id_turnamen});
                     if (recTurnamen.success){
-                        // Buat Peringkat
-                        const peringkat = await getPeringkat(id_turnamen);
-                        await generateImage2(peringkat, senderNumber);
-                        // Kirim Hasilnya
-                        await sock.sendMessage(senderJid, {image: {url: './src/images/infoturnamen_'+peringkat.turnamen[0].id_turnamen+'_'+senderNumber+'.png'}, caption: 'Informasi Grafis Peringkat '+peringkat.turnamen[0].nama_turnamen});
+                        console.log(recTurnamen.data[0].status.toLowerCase());
+                        if (recTurnamen.data[0].status.toLowerCase()==='selesai') {
+                            // Buat Peringkat
+                            const peringkat = await getPeringkat(id_turnamen);
+                            await generateImage2(peringkat, senderNumber);
+                            // Kirim Hasilnya
+                            await sock.sendMessage(senderJid, {image: {url: './src/images/infoturnamen_'+peringkat.turnamen[0].id_turnamen+'_'+senderNumber+'.png'}, caption: 'Informasi Grafis Peringkat '+peringkat.turnamen[0].nama_turnamen});
+                        } else {
+                            await sock.sendMessage(senderJid, { text: `Data tidak ditemukan!` }); 
+                        }
                     } else {
-                        await sock.sendMessage(senderJid, { text: `Id Turnamen tidak temukan!` }); 
+                        await sock.sendMessage(senderJid, { text: `Id Turnamen tidak ditemukan!` }); 
                     }
                 } else {
                     await sock.sendMessage(senderJid, { text: `ID Turnamen belum dimasukkan.` }); 
