@@ -23,6 +23,7 @@ const TABLE_DAFTAR = 'daftar';
 const GMP_RANGKING_PEMAIN = `buat ranking pemain`;
 const GMP_INFOGRAFIS_RANGKING_PEMAIN = `buat infografis ranking pemain`;
 const GMP_HEAD_TO_HEAD = 'buat head to head pemain';
+const GMP_HEAD_TO_HEAD2 = 'buat head to head';
 const GMP_DISP_TURNAMEN = 'buat data turnamen';
 const GMP_RENCANA_TURNAMEN = 'buat rencana turnamen';
 const GMP_DISP_PEMAIN = 'buat data pemain';
@@ -32,7 +33,7 @@ const GMP_DAFTARKAN = `daftarkan`;
 const GMP_PROFIL_PEMAIN = `buat profil pemain`;
 const GMP_TENTUKAN_POOL = `buat pool`;
 
-const perintahAll = [GMP_INFOGRAFIS_RANGKING_PEMAIN, GMP_RANGKING_PEMAIN, GMP_HEAD_TO_HEAD, GMP_DISP_TURNAMEN, GMP_DISP_PEMAIN, GMP_POSISI_TERBAIK, GMP_DAFTARKAN, GMP_DAFTARKAN_SAYA, GMP_PROFIL_PEMAIN, GMP_RENCANA_TURNAMEN, GMP_TENTUKAN_POOL, 'tambah', 'hapus', 'perbaiki', 'perbaiki status', 'perbaiki realisasi'];
+const perintahAll = [GMP_INFOGRAFIS_RANGKING_PEMAIN, GMP_RANGKING_PEMAIN,GMP_HEAD_TO_HEAD,  GMP_HEAD_TO_HEAD2, GMP_DISP_TURNAMEN, GMP_DISP_PEMAIN, GMP_POSISI_TERBAIK, GMP_DAFTARKAN, GMP_DAFTARKAN_SAYA, GMP_PROFIL_PEMAIN, GMP_RENCANA_TURNAMEN, GMP_TENTUKAN_POOL, 'tambah', 'hapus', 'perbaiki', 'perbaiki status', 'perbaiki realisasi'];
 
 const GMP_MULAI_IMPORT_DATA = `mulai import data`; 
 const GMP_RESET_PERTANDINGAN = `reset pertandingan`;
@@ -180,7 +181,6 @@ async function startBot() {
         const msg = m.messages[0];
         const senderJid = msg.key.remoteJid;
         const senderPart = msg.key.participant; 
-        console.log(senderPart);
         const senderNumber = senderJid.replace(/[@].*/, ""); // Mengambil nomor HP
         const senderName = msg.pushName || "Tanpa Nama"; 
         const sender = senderName + senderNumber;
@@ -239,14 +239,14 @@ async function startBot() {
 
         if (statapp[0]===SETOFF) return;
         
-        const [command] = parseCommand(text);
+        const command = parseCommand(text);
         //console.log(command);
         //const para1 = command.parameter[0];
         //const para2 = command.parameter[1];
         //const para3 = command.parameter[2];
         const menu = command.perintah.toLowerCase();
-        console.log(menu);
-        console.log(command);
+        //console.log(menu);
+        //console.log(command);
 
         if (senderNumber !== authorizingUser) {   
             console.log(text);
@@ -325,8 +325,9 @@ async function startBot() {
                             }
                         }
                     }
-                    delete userSessions[sender];
                     return;
+                    delete userSessions[sender];
+                    
                 } else if (session.step===IMPORTDATA_MULAI) {
                     //console.log(msg);
                     const rec = await handleFile(sock, msg);
@@ -406,7 +407,7 @@ async function startBot() {
             //const menu = command.perintah;
             //console.log(para1, para2, para3);
             if (menu.toLowerCase()===GMP_RANGKING_PEMAIN){
-                if (command.parameter){
+                if (command.parameter.length){
                     sock.sendPresenceUpdate("composing", senderJid);
                     let id_turnamen = command.parameter[0];
                     if (!isNumber(id_turnamen)) {
@@ -451,11 +452,11 @@ async function startBot() {
                     await sock.sendMessage(senderJid, { text: `ID Turnamen belum dimasukkan.` }); 
                 }
                 delete userSessions[sender];
-            } else if (menu.toLowerCase()===GMP_HEAD_TO_HEAD){
+            } else if (menu.toLowerCase()===GMP_HEAD_TO_HEAD || menu.toLowerCase()===GMP_HEAD_TO_HEAD2){
 
                 sock.sendPresenceUpdate("composing", senderJid);
                 
-                if (command.parameter.length>=3){
+                if (command.parameter.length===3){
 
                     let id_pemain = command.parameter[0];
                     //console.log('ID ----->', id_pemain);
@@ -547,7 +548,7 @@ async function startBot() {
                         await sock.sendMessage(senderJid, { text: 'Data Tidak Ditemukan...' });                          
                     }
                 } else {
-                    await sock.sendMessage(senderJid, { text: `Ada parameter yang belum dikirim.` }); 
+                    await sock.sendMessage(senderJid, { text: `_Informasi belum lengkap!_. Seharusnya seperti contoh berikut:\nBuat head to head antara *M. Yunus* dengan *Utha* pada turnamen *Kedua*` }); 
                 }
                 delete userSessions[sender];
             
@@ -925,7 +926,11 @@ async function startBot() {
                 await sock.sendMessage(senderJid, { text: `Masukkan _File Excel_ yang akan diimport :` });
                 userSessions[sender] = { step: IMPORTDATA_MULAI } 
             } else if (menu.toLowerCase()===GMP_POSISI_TERBAIK){
-                if (command.parameter){
+                if (command.parameter.length!==2) {
+                    await sock.sendMessage(senderJid, { text: `_Informasi tidak lengkap_.\n\nContoh:\nBuat posisi terbaik untuk *M. Yunus* pada turnamen *Pertama*` });
+                    return;
+                }
+                if (command.parameter.length>1){
                     sock.sendPresenceUpdate("composing", senderJid);
 
                     let id_pemain = command.parameter[0];

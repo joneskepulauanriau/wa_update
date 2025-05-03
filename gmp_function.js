@@ -470,80 +470,104 @@ function parsePerintah(text) {
 }
 
 function parseCommand(text) {
-  // 1. Tangani format khusus: tambah/perbaiki/hapus dengan objek & isi di dalam {}
-  const structuredCommand = text.match(/^(tambah|perbaiki(?: status| realisasi)?|hapus)\s+(\w+)\s*\{([^}]+)\}$/i);
-  if (structuredCommand) {
-    const perintah = structuredCommand[1].toLowerCase();
-    const objek = structuredCommand[2];
-    const isi = structuredCommand[3].split(',').map(v => v.trim());
-    return [{
-      perintah: perintah,
-      parameter: [objek, ...isi]
-    }];
+  // Tangani format khusus: tambah, hapus, perbaiki { ... }
+  const regexData = /^(tambah|hapus|perbaiki)\s+(\w+)\s*\{([^}]+)\}$/i;
+  const matchData = text.match(regexData);
+  if (matchData) {
+    const command = matchData[1].toLowerCase();
+    const table = matchData[2];
+    const values = matchData[3].split(',').map(val => val.trim());
+    return {
+      perintah: command,
+      parameter: [table, ...values]
+    };
   }
 
-  // 2. Tangani: tampilkan rencana turnamen tahun XXXX
-  const rencanaMatch = text.match(/tampilkan\s+rencana\s+turnamen\s+tahun\s+(\d{4})/i);
-  if (rencanaMatch) {
-    return [{
+  // Tangani format: tampilkan rencana turnamen tahun XXXX
+  const matchRencana = text.match(/tampilkan\s+rencana\s+turnamen\s+tahun\s+(\d{4})/i);
+  if (matchRencana) {
+    return {
       perintah: 'buat rencana turnamen',
-      parameter: [rencanaMatch[1]]
-    }];
+      parameter: [matchRencana[1]]
+    };
   }
 
-  // 3. Tangani: tampilkan profil pemain atas nama ...
-  const profilAtasNamaMatch = text.match(/tampilkan\s+profil(?:\s+\w+)?\s+atas\s+nama\s+(.+)/i);
-  if (profilAtasNamaMatch) {
-    const nama = profilAtasNamaMatch[1].trim();
-    return [{
+  // Normalisasi dan penyamaan istilah
+  text = text
+    .replace(/\s+/g, ' ')
+    .replace(/;/g, ',')
+    .replace(/h2h|pertemuan langsung/gi, 'head to head')
+    .replace(/\btampilkan\b/gi, 'buat')
+    .replace(/\brangking\b|\bperingkat\b/gi, 'ranking')
+    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk')
+    .trim();
+
+  // Format khusus untuk pembuatan profil
+  const profilMatch = text.match(/^buat profil (.+)$/i);
+  if (profilMatch) {
+    return {
       perintah: 'buat profil',
-      parameter: [nama]
-    }];
+      parameter: [profilMatch[1].trim()]
+    };
   }
 
-  // 4. Tangani: daftarkan [siapa pun] pada turnamen [namaTurnamen]
-  const daftarkanMatch = text.match(/^daftarkan\s+(.+?)\s+pada\s+turnamen\s+(.+)/i);
-  if (daftarkanMatch) {
-    const siapa = daftarkanMatch[1].trim().toLowerCase();
-    const turnamen = daftarkanMatch[2].trim();
-    if (siapa === 'saya') {
-      return [{ perintah: 'daftarkan saya', parameter: [turnamen] }];
-    } else {
-      return [{ perintah: 'daftarkan', parameter: [siapa, turnamen] }];
+  // Format pembuatan pool
+  const poolMatch = text.match(/^buat pool .*turnamen (.+)$/i);
+  if (poolMatch) {
+    return {
+      perintah: 'buat pool',
+      parameter: [poolMatch[1].trim()]
+    };
+  }
+
+  // Format daftarkan saya
+  const daftarSaya = text.match(/^daftarkan saya .*turnamen (.+)$/i);
+  if (daftarSaya) {
+    return {
+      perintah: 'daftarkan saya',
+      parameter: [daftarSaya[1].trim()]
+    };
+  }
+
+  // Format daftarkan orang lain
+  const daftarOrang = text.match(/^daftarkan ([^\s]+) .*turnamen (.+)$/i);
+  if (daftarOrang) {
+    return {
+      perintah: 'daftarkan',
+      parameter: [daftarOrang[1].trim(), daftarOrang[2].trim()]
+    };
+  }
+
+  // Tangani perintah umum dengan pemisah kata
+  const separators = ['antara', 'dengan', 'untuk', 'pada', 'turnamen', 'dan'];
+  let firstSeparatorIndex = -1;
+  for (let word of separators) {
+    const index = text.toLowerCase().indexOf(' ' + word + ' ');
+    if (index !== -1 && (firstSeparatorIndex === -1 || index < firstSeparatorIndex)) {
+      firstSeparatorIndex = index;
     }
   }
 
-  // 5. Normalisasi teks
-  const originalText = text.trim();
-  const normalText = originalText
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/tampilkan/gi, 'buat')
-    .replace(/pertemuan langsung/gi, 'head to head')
-    .replace(/h2h/gi, 'head to head')
-    .replace(/rangking|peringkat/gi, 'ranking')
-    .replace(/\butnuk\b|\buntk\b|\bntuk\b|\btuk\b/gi, 'untuk');
+  const perintah = firstSeparatorIndex !== -1 ? text.substring(0, firstSeparatorIndex).trim() : text.trim();
+  const paramText = firstSeparatorIndex !== -1 ? text.substring(firstSeparatorIndex).trim() : '';
 
-  // 6. Tangkap perintah multi-kata di awal kalimat
-  const multiCommandMatch = normalText.match(/^(.+?)\s+(untuk|pada|antara|dengan)\s+/i);
-  const perintah = multiCommandMatch ? multiCommandMatch[1].trim() : normalText;
-  const paramText = multiCommandMatch
-    ? originalText.substring(multiCommandMatch[0].length + perintah.length).trim()
-    : '';
+  // Ambil angka panjang (6 digit ke atas)
+  const numbers = paramText.match(/\d{6,}/g) || [];
 
-  // 7. Tangkap angka panjang (ID) + frasa non-angka
-  const kodeAngka = [...(paramText.match(/\d{6,}/g) || [])];
-
-  const namaFrasa = paramText
-    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan|atas nama)\b/gi, '|')
+  // Pisahkan frasa berdasarkan kata penghubung
+  const phrases = paramText
+    .replace(/\b(antara|dengan|untuk|pada|turnamen|dan)\b/gi, '|')
     .split('|')
     .map(s => s.trim())
     .filter(s => s.length > 0 && !/^\d{6,}$/.test(s));
 
-  return [{
-    perintah: perintah,
-    parameter: [...kodeAngka, ...namaFrasa]
-  }];
+  // Gabungkan parameter
+  const parameters = [...numbers, ...phrases];
+
+  return {
+    perintah: perintah.toLowerCase(),
+    parameter: parameters
+  };
 }
 
 function isNumber(value) {
